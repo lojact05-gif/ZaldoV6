@@ -199,7 +199,9 @@ app.MapPost("/print/fiscal-pdf", async (HttpContext context, FiscalPdfPrintReque
             applyCut,
             request.CutMode,
             applyDrawer,
-            request.FeedLines
+            request.FeedLines,
+            request.WidthDots,
+            request.SegmentHeight
         );
     }
     catch (Exception ex)

@@ -225,7 +225,9 @@ public sealed class EscPosBuilder
         bool applyCut,
         string? cutModeOverride,
         bool applyDrawer,
-        int? feedLines)
+        int? feedLines,
+        int? widthDots,
+        int? segmentHeight)
     {
         if (pages is null || pages.Count == 0)
         {
@@ -236,7 +238,9 @@ public sealed class EscPosBuilder
         bytes.AddRange(CmdInit());
         bytes.AddRange(CmdAlign(1));
 
-        var maxWidth = profile.ModeNormalized() == "network" ? 576 : 384;
+        var defaultWidth = profile.ModeNormalized() == "network" ? 576 : 384;
+        var targetWidth = NormalizePaperWidthDots(widthDots ?? defaultWidth, defaultWidth);
+        var targetSegmentHeight = Math.Clamp(segmentHeight ?? 1200, 420, 2200);
         var printedPages = 0;
         foreach (var raw in pages)
         {
@@ -245,16 +249,18 @@ public sealed class EscPosBuilder
                 continue;
             }
 
-            var raster = BuildRasterFromBase64(raw, maxWidth, 3200);
-            if (raster is null || raster.Length == 0)
+            var chunks = BuildRasterChunksFromBase64(raw, targetWidth, targetSegmentHeight);
+            if (chunks.Count == 0)
             {
                 continue;
             }
-
-            bytes.AddRange(raster);
+            foreach (var raster in chunks)
+            {
+                bytes.AddRange(raster);
+                bytes.Add(0x0A);
+            }
             bytes.Add(0x0A);
-            bytes.Add(0x0A);
-            printedPages++;
+            printedPages += chunks.Count;
         }
 
         if (printedPages <= 0)
@@ -268,7 +274,7 @@ public sealed class EscPosBuilder
             bytes.AddRange(OpenDrawer(profile));
         }
 
-        var safeFeed = Math.Clamp(feedLines ?? 6, 4, 14);
+        var safeFeed = Math.Clamp(feedLines ?? 6, 4, 6);
         bytes.AddRange(CmdFeed(safeFeed));
         bytes.Add(0x0A);
         bytes.Add(0x0A);
@@ -484,48 +490,89 @@ public sealed class EscPosBuilder
         }
     }
 
-    private static byte[]? BuildRasterFromBase64(string rawBase64, int maxWidth, int maxHeight)
+    private static List<byte[]> BuildRasterChunksFromBase64(string rawBase64, int maxWidth, int segmentHeight)
     {
+        var chunks = new List<byte[]>();
         var sourceBytes = DecodeBase64Image(rawBase64);
         if (sourceBytes is null || sourceBytes.Length == 0)
         {
-            return null;
+            return chunks;
         }
 
         using var stream = new MemoryStream(sourceBytes);
         using var source = new Bitmap(stream);
         if (source.Width <= 0 || source.Height <= 0)
         {
-            return null;
+            return chunks;
         }
 
         var widthLimit = Math.Max(120, Math.Min(640, maxWidth));
-        var heightLimit = Math.Max(300, Math.Min(8000, maxHeight));
-
-        var widthScale = source.Width > widthLimit
-            ? (decimal)widthLimit / source.Width
-            : 1m;
-        var heightScale = source.Height > heightLimit
-            ? (decimal)heightLimit / source.Height
-            : 1m;
-        var scale = Math.Min(widthScale, heightScale);
+        var safeSegment = Math.Clamp(segmentHeight, 420, 2200);
+        var scale = (decimal)widthLimit / Math.Max(1, source.Width);
         if (scale <= 0)
         {
             scale = 1m;
         }
-
-        var width = Math.Max(1, (int)Math.Round(source.Width * (double)scale));
+        var width = widthLimit;
         var height = Math.Max(1, (int)Math.Round(source.Height * (double)scale));
-        using var bitmap = new Bitmap(width, height, PixelFormat.Format24bppRgb);
-        using (var g = Graphics.FromImage(bitmap))
+        using var scaled = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+        using (var g = Graphics.FromImage(scaled))
         {
             g.Clear(Color.White);
-            g.InterpolationMode = InterpolationMode.HighQualityBilinear;
+            g.CompositingQuality = CompositingQuality.HighQuality;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.SmoothingMode = SmoothingMode.HighQuality;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.DrawImage(source, 0, 0, width, height);
         }
 
-        var raster = BuildRaster(bitmap);
-        return raster.Length > 0 ? raster : null;
+        for (var y = 0; y < height; y += safeSegment)
+        {
+            var chunkHeight = Math.Min(safeSegment, height - y);
+            using var chunk = new Bitmap(width, chunkHeight, PixelFormat.Format24bppRgb);
+            using (var g = Graphics.FromImage(chunk))
+            {
+                g.Clear(Color.White);
+                g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                g.SmoothingMode = SmoothingMode.None;
+                g.PixelOffsetMode = PixelOffsetMode.Half;
+                g.DrawImage(
+                    scaled,
+                    new Rectangle(0, 0, width, chunkHeight),
+                    new Rectangle(0, y, width, chunkHeight),
+                    GraphicsUnit.Pixel
+                );
+            }
+            var raster = BuildRaster(chunk);
+            if (raster.Length > 0)
+            {
+                chunks.Add(raster);
+            }
+        }
+        return chunks;
+    }
+
+    private static int NormalizePaperWidthDots(int value, int fallback)
+    {
+        var allowed = new[] { 384, 512, 576, 640 };
+        var target = value > 0 ? value : fallback;
+        if (allowed.Contains(target))
+        {
+            return target;
+        }
+
+        var nearest = fallback;
+        var bestDelta = int.MaxValue;
+        foreach (var candidate in allowed)
+        {
+            var delta = Math.Abs(candidate - target);
+            if (delta < bestDelta)
+            {
+                bestDelta = delta;
+                nearest = candidate;
+            }
+        }
+        return nearest;
     }
 
     private static byte[] BuildRaster(Bitmap bitmap)
@@ -550,6 +597,48 @@ public sealed class EscPosBuilder
             (byte)((height >> 8) & 0xFF),
         };
 
+        var luma = new double[width * height];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var pixel = bitmap.GetPixel(x, y);
+                luma[(y * width) + x] = ((pixel.R * 299) + (pixel.G * 587) + (pixel.B * 114)) / 1000.0;
+            }
+        }
+
+        const double threshold = 162.0;
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var idx = (y * width) + x;
+                var oldPixel = luma[idx];
+                if (oldPixel < 0) oldPixel = 0;
+                if (oldPixel > 255) oldPixel = 255;
+                var newPixel = oldPixel < threshold ? 0.0 : 255.0;
+                luma[idx] = newPixel;
+                var error = oldPixel - newPixel;
+
+                if (x + 1 < width)
+                {
+                    luma[idx + 1] += error * (7.0 / 16.0);
+                }
+                if (y + 1 < height)
+                {
+                    if (x > 0)
+                    {
+                        luma[idx + width - 1] += error * (3.0 / 16.0);
+                    }
+                    luma[idx + width] += error * (5.0 / 16.0);
+                    if (x + 1 < width)
+                    {
+                        luma[idx + width + 1] += error * (1.0 / 16.0);
+                    }
+                }
+            }
+        }
+
         for (var y = 0; y < height; y++)
         {
             for (var xb = 0; xb < widthBytes; xb++)
@@ -562,10 +651,8 @@ public sealed class EscPosBuilder
                     {
                         continue;
                     }
-
-                    var pixel = bitmap.GetPixel(x, y);
-                    var luma = (pixel.R * 299 + pixel.G * 587 + pixel.B * 114) / 1000;
-                    if (luma < 150)
+                    var idx = (y * width) + x;
+                    if (luma[idx] < 128.0)
                     {
                         slice |= (byte)(0x80 >> bit);
                     }

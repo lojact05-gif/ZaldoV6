@@ -159,4 +159,10 @@ public sealed class FiscalPdfPrintRequest
 
     [JsonPropertyName("feedLines")]
     public int? FeedLines { get; set; }
+
+    [JsonPropertyName("widthDots")]
+    public int? WidthDots { get; set; }
+
+    [JsonPropertyName("segmentHeight")]
+    public int? SegmentHeight { get; set; }
 }
