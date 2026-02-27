@@ -3,13 +3,14 @@ namespace ZaldoPrinter.Common.System;
 public sealed class FileLog
 {
     private readonly object _sync = new();
-    private readonly string _logDirectory;
+    private string _logDirectory;
 
-    public FileLog()
+    public FileLog(string? preferredLogDirectory = null)
     {
-        _logDirectory = ProgramDataPaths.LogsDirectory();
-        Directory.CreateDirectory(_logDirectory);
+        _logDirectory = ProgramDataPaths.ResolveWritableLogsDirectory(preferredLogDirectory);
     }
+
+    public string LogDirectory => _logDirectory;
 
     public void Info(string message) => Write("INFO", message, null);
 
@@ -29,7 +30,39 @@ public sealed class FileLog
 
         lock (_sync)
         {
-            File.AppendAllText(file, line + Environment.NewLine, global::System.Text.Encoding.UTF8);
+            try
+            {
+                File.AppendAllText(file, line + Environment.NewLine, global::System.Text.Encoding.UTF8);
+                return;
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException || ex is IOException)
+            {
+                // Fallback de execução em clientes sem ACL válida no ProgramData.
+                if (!TrySwitchToLocalAppDataDirectory())
+                {
+                    throw;
+                }
+            }
+
+            var fallbackFile = Path.Combine(_logDirectory, $"zaldo-printer-{DateTimeOffset.Now:yyyyMMdd}.log");
+            File.AppendAllText(fallbackFile, line + Environment.NewLine, global::System.Text.Encoding.UTF8);
         }
+    }
+
+    private bool TrySwitchToLocalAppDataDirectory()
+    {
+        var fallback = ProgramDataPaths.LocalLogsDirectory();
+        if (string.Equals(_logDirectory, fallback, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!ProgramDataPaths.TryEnsureWritableDirectory(fallback, out _))
+        {
+            return false;
+        }
+
+        _logDirectory = fallback;
+        return true;
     }
 }

@@ -19,6 +19,11 @@ WizardStyle=modern
 [Files]
 Source: "..\dist\package\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Dirs]
+Name: "{commonappdata}\ZaldoPrinter"; Permissions: users-modify
+Name: "{commonappdata}\ZaldoPrinter\config"; Permissions: users-modify
+Name: "{commonappdata}\ZaldoPrinter\log"; Permissions: users-modify
+
 [Code]
 function CanLaunchConfigApp: Boolean;
 begin

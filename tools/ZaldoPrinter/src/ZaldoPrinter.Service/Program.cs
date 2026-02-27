@@ -22,7 +22,19 @@ builder.Services.Configure<JsonOptions>(options =>
     options.SerializerOptions.WriteIndented = false;
 });
 
-builder.Services.AddSingleton<FileLog>();
+var preferredProgramDataLog = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+    "ZaldoPrinter",
+    "log"
+);
+var startupLogDirectory = preferredProgramDataLog;
+if (!ProgramDataPaths.TryEnsureWritableDirectory(preferredProgramDataLog, out _))
+{
+    startupLogDirectory = ProgramDataPaths.LocalLogsDirectory();
+    ProgramDataPaths.TryEnsureWritableDirectory(startupLogDirectory, out _);
+}
+
+builder.Services.AddSingleton(new FileLog(startupLogDirectory));
 builder.Services.AddSingleton<JsonConfigStore>();
 builder.Services.AddSingleton<WindowsPrinterCatalog>();
 builder.Services.AddSingleton<EscPosBuilder>();
@@ -37,7 +49,7 @@ builder.Services.AddSingleton<PrinterQueueDispatcher>(sp => new PrinterQueueDisp
 var app = builder.Build();
 
 var log = app.Services.GetRequiredService<FileLog>();
-log.Info("Zaldo Printer service booting on 127.0.0.1:16161.");
+log.Info("Zaldo Printer service booting on 127.0.0.1:16161. Logs=" + log.LogDirectory);
 
 app.Use(async (context, next) =>
 {
