@@ -110,33 +110,32 @@ Exemplo:
 ## Logs
 
 Pasta:
-- `%PROGRAMDATA%\ZaldoPrinter\logs\`
+- `%PROGRAMDATA%\ZaldoPrinter\log\` (fallback automático para `%LOCALAPPDATA%\ZaldoPrinter\log\` quando necessário)
 
 Formato:
 - `zaldo-printer-YYYYMMDD.log`
 
 ## Instalação para cliente final (Windows)
 
-1. Instalar o `ZaldoPrinterSetup.exe`.
-2. Abrir `Zaldo Printer Config` pelo atalho.
-3. Verificar status do serviço: **Online**.
-4. Copiar token de pareamento.
-5. Adicionar 1 ou mais perfis de impressora.
-6. Definir impressora padrão.
-7. Clicar em:
+1. Baixar e executar **`ZaldoPrinterSetup.exe`** (instalador com wizard Next/Install/Finish).
+2. **Não executar `ZaldoPrinter.Service.exe` manualmente** (esse executável é o binário do serviço).
+3. O instalador cria/regista o serviço `ZaldoPrinterService` automaticamente.
+4. Abrir `Zaldo Printer Config` pelo atalho.
+5. Verificar status do serviço: **Online**.
+6. Copiar token de pareamento.
+7. Adicionar 1 ou mais perfis de impressora.
+8. Definir impressora padrão.
+9. Clicar em:
    - `Testar Impressão`
    - `Testar Gaveta`
    - `Testar Corte`
-8. No POS, configurar token/base URL para usar o serviço local.
+10. No POS, configurar token/base URL para usar o serviço local.
 
-### Troubleshooting rápido
+### Release / Artefato correto
 
-- Erro no setup: `Unable to execute file ... ZaldoPrinter.ConfigApp.exe (CreateProcess failed; code 2)`
-  - Significa instalador/pacote incompleto (faltou o `ConfigApp.exe`) ou antivírus moveu o executável.
-  - Recomendado:
-    1. Reinstalar com o instalador mais recente.
-    2. Confirmar se existe `C:\Program Files\ZaldoPrinter\ZaldoPrinter.ConfigApp.exe`.
-    3. Se não existir, usar temporariamente o bridge legado (`/pos_bridge_download.php?target=windows`) até novo setup ser gerado.
+- O ficheiro publicado na release deve ser:
+  - `ZaldoPrinterSetup.exe` (e opcional `ZaldoPrinterSetup.exe.sha256`)
+- O executável `ZaldoPrinter.Service.exe` **não** é instalador.
 
 ## Build (equipa técnica)
 
@@ -148,19 +147,29 @@ Pré-requisitos:
 Publicar binários:
 
 ```powershell
-cd tools\zaldo_printer\scripts
+cd tools\ZaldoPrinter\scripts
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
 Gerar instalador:
 
 ```powershell
-cd tools\zaldo_printer\scripts
+cd tools\ZaldoPrinter\scripts
 powershell -ExecutionPolicy Bypass -File .\build_installer.ps1
 ```
 
-Saída:
-- `tools\zaldo_printer\dist\ZaldoPrinterSetup.exe`
+Saída esperada:
+- `tools\ZaldoPrinter\out\installer\ZaldoPrinterSetup.exe`
+- `tools\ZaldoPrinter\out\installer\ZaldoPrinterSetup.exe.sha256` (no CI)
+
+### Troubleshooting rápido
+
+- Erro no setup: `Unable to execute file ... ZaldoPrinter.ConfigApp.exe (CreateProcess failed; code 2)`
+  - Significa instalador/pacote incompleto (faltou o `ConfigApp.exe`) ou antivírus moveu o executável.
+  - Recomendado:
+    1. Reinstalar com o instalador mais recente.
+    2. Confirmar se existe `C:\Program Files\ZaldoPrinter\ZaldoPrinter.ConfigApp.exe`.
+    3. Se não existir, usar temporariamente o bridge legado (`/pos_bridge_download.php?target=windows`) até novo setup ser gerado.
 
 ## Integração no POS Web
 

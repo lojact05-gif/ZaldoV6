@@ -9,23 +9,23 @@
 Na raiz do repositório:
 
 ```powershell
-# 1) gerar binários single-file no dist/package
+# 1) gerar binários single-file no out/publish
 ./scripts/build.ps1 -Configuration Release -Runtime win-x64 -SelfContained:$true
 
-# 2) gerar instalador Inno Setup em dist/ZaldoPrinterSetup.exe
+# 2) gerar instalador Inno Setup em out/installer/ZaldoPrinterSetup.exe
 ./scripts/build_installer.ps1 -InnoPath "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 ```
 
 Saída:
-- `dist/package/` (ZaldoPrinter.Service.exe + ZaldoPrinter.ConfigApp.exe)
-- `dist/ZaldoPrinterSetup.exe` (instalador)
+- `out/publish/` (ZaldoPrinter.Service.exe + ZaldoPrinter.ConfigApp.exe)
+- `out/installer/ZaldoPrinterSetup.exe` (instalador wizard)
 
 ## Build via GitHub Actions
-Workflow incluído em `.github/workflows/build-windows-installer.yml`.
+Workflow incluído em `.github/workflows/build-zaldo-printer.yml`.
 
 Como usar:
 1. Faça push do código.
-2. Crie uma tag (ex.: `v1.0.1`) e faça push da tag.
-3. O workflow irá gerar e anexar o artefacto `ZaldoPrinterSetup.exe`.
+2. Crie uma tag (ex.: `zp-v1.0.1`) e faça push da tag.
+3. O workflow irá gerar e anexar o artefacto **instalador** `ZaldoPrinterSetup.exe` (não anexa `ZaldoPrinter.Service.exe`).
 
 > Alternativa: execute manualmente pelo botão **Run workflow**.
